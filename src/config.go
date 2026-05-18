@@ -11,6 +11,7 @@ type Config struct {
 	TargetService    string
 	TargetPort       string
 	SleepTimeout     time.Duration
+	CPUUsageThreshold float64
 	CheckInterval    time.Duration
 	EndpointPrefix   string
 	AllowListMode    bool
@@ -44,6 +45,15 @@ func getEnvBool(key string, defaultValue bool) bool {
 	return defaultValue
 }
 
+func getEnvFloat(key string, defaultValue float64) float64 {
+	if value := os.Getenv(key); value != "" {
+		if floatVal, err := strconv.ParseFloat(value, 64); err == nil {
+			return floatVal
+		}
+	}
+	return defaultValue
+}
+
 func LoadConfig() Config {
 	targetService := os.Getenv("TARGET_SERVICE")
 	if targetService == "" {
@@ -68,6 +78,7 @@ func LoadConfig() Config {
 		TargetService:    targetService,
 		TargetPort:       targetPort,
 		SleepTimeout:     time.Duration(sleepTimeoutSec) * time.Second,
+		CPUUsageThreshold: getEnvFloat("CPU_USAGE_THRESHOLD", 0),
 		CheckInterval:    time.Duration(checkIntervalSec) * time.Second,
 		EndpointPrefix:   getEnv("ENDPOINT_PREFIX", "sleep-proxy"),
 		AllowListMode:    getEnvBool("ALLOW_LIST_MODE", false),

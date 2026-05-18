@@ -56,6 +56,9 @@ func NewSleepProxy(config Config) (*SleepProxy, error) {
 	log.Printf("Container ID: %s", hostname[:12])
 	log.Printf("Target: %s:%s", config.TargetService, config.TargetPort)
 	log.Printf("Sleep timeout: %v", config.SleepTimeout)
+	if config.CPUUsageThreshold > 0 {
+		log.Printf("CPU usage threshold for sleep checks: %.2f%%", config.CPUUsageThreshold)
+	}
 
 	sp := &SleepProxy{
 		config:       config,

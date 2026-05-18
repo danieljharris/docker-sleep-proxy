@@ -88,6 +88,7 @@ All configuration is done via environment variables:
 | `TARGET_PORT` | ✅ Yes | - | Port of the target service |
 | `PROXY_PORT` | No | `8000` | Port the proxy listens on |
 | `SLEEP_TIMEOUT` | No | `86400` | Seconds of inactivity before stopping containers (24h default) |
+| `CPU_USAGE_THRESHOLD` | No | `0` | Minimum CPU usage percentage that prevents sleep when timeout is reached (`0` disables CPU checks) |
 | `PAUSE_CONTAINERS` | No | `false` | When `true`, containers are paused instead of stopped when put to sleep |
 | `CHECK_INTERVAL` | No | `5` | Seconds between health checks during startup |
 | `ENDPOINT_PREFIX` | No | `sleep-proxy` | Prefix for proxy management endpoints |
