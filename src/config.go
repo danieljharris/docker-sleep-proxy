@@ -9,8 +9,8 @@ import (
 
 type Config struct {
 	ProxyPort         string
-	TargetService     string
-	TargetServices    []string
+	TargetService     string   // Primary proxy upstream (first TARGET_SERVICE entry)
+	TargetServices    []string // Managed wake/sleep group from TARGET_SERVICE entries
 	TargetPort        string
 	SleepTimeout      time.Duration
 	CPUUsageThreshold float64

@@ -152,10 +152,10 @@ func (sp *SleepProxy) getContainerNetworkBytes(ctx context.Context, containerID 
 }
 
 func (sp *SleepProxy) hasNetworkActivity(ctx context.Context, containers []types.Container) (bool, error) {
-	activeIDs := make(map[string]struct{}, len(containers))
+	managedIDs := make(map[string]struct{}, len(containers))
 
 	for _, c := range containers {
-		activeIDs[c.ID] = struct{}{}
+		managedIDs[c.ID] = struct{}{}
 		if c.State != "running" {
 			continue
 		}
@@ -174,7 +174,7 @@ func (sp *SleepProxy) hasNetworkActivity(ctx context.Context, containers []types
 	}
 
 	for containerID := range sp.networkBytes {
-		if _, exists := activeIDs[containerID]; !exists {
+		if _, exists := managedIDs[containerID]; !exists {
 			delete(sp.networkBytes, containerID)
 		}
 	}
