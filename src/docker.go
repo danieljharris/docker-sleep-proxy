@@ -75,6 +75,17 @@ func (sp *SleepProxy) startContainers(ctx context.Context) error {
 			if len(containerName) > 0 && containerName[0] == '/' {
 				containerName = containerName[1:]
 			}
+
+			if c.State == "paused" {
+				log.Printf("Unpausing container: %s", containerName)
+				if err := sp.dockerClient.ContainerUnpause(ctx, c.ID); err != nil {
+					log.Printf("Failed to unpause container %s: %v", containerName, err)
+				} else {
+					log.Printf("Successfully unpaused: %s", containerName)
+				}
+				continue
+			}
+
 			log.Printf("Starting container: %s (state: %s)", containerName, c.State)
 			if err := sp.dockerClient.ContainerStart(ctx, c.ID, container.StartOptions{}); err != nil {
 				log.Printf("Failed to start container %s: %v", containerName, err)
@@ -93,7 +104,11 @@ func (sp *SleepProxy) stopContainers(ctx context.Context) error {
 		return fmt.Errorf("failed to list containers: %w", err)
 	}
 
-	log.Printf("Stopping %d containers in project '%s'", len(containers), sp.projectName)
+	if sp.config.PauseContainers {
+		log.Printf("Pausing %d containers in project '%s'", len(containers), sp.projectName)
+	} else {
+		log.Printf("Stopping %d containers in project '%s'", len(containers), sp.projectName)
+	}
 
 	timeout := 10
 	for _, c := range containers {
@@ -102,11 +117,20 @@ func (sp *SleepProxy) stopContainers(ctx context.Context) error {
 			if len(containerName) > 0 && containerName[0] == '/' {
 				containerName = containerName[1:]
 			}
-			log.Printf("Stopping container: %s", containerName)
-			if err := sp.dockerClient.ContainerStop(ctx, c.ID, container.StopOptions{Timeout: &timeout}); err != nil {
-				log.Printf("Failed to stop container %s: %v", containerName, err)
+			if sp.config.PauseContainers {
+				log.Printf("Pausing container: %s", containerName)
+				if err := sp.dockerClient.ContainerPause(ctx, c.ID); err != nil {
+					log.Printf("Failed to pause container %s: %v", containerName, err)
+				} else {
+					log.Printf("Successfully paused: %s", containerName)
+				}
 			} else {
-				log.Printf("Successfully stopped: %s", containerName)
+				log.Printf("Stopping container: %s", containerName)
+				if err := sp.dockerClient.ContainerStop(ctx, c.ID, container.StopOptions{Timeout: &timeout}); err != nil {
+					log.Printf("Failed to stop container %s: %v", containerName, err)
+				} else {
+					log.Printf("Successfully stopped: %s", containerName)
+				}
 			}
 		}
 	}
@@ -158,10 +182,14 @@ func (sp *SleepProxy) monitorActivity(ctx context.Context) {
 					log.Printf("No activity for %v (threshold: %v), putting containers to sleep",
 						timeSinceActivity.Round(time.Second), sp.config.SleepTimeout)
 					if err := sp.stopContainers(ctx); err != nil {
-						log.Printf("Failed to stop containers: %v", err)
+						log.Printf("Failed to put containers to sleep: %v", err)
 					} else {
 						sp.setContainersUp(false)
-						log.Printf("Containers stopped successfully")
+						if sp.config.PauseContainers {
+							log.Printf("Containers paused successfully")
+						} else {
+							log.Printf("Containers stopped successfully")
+						}
 					}
 				}
 			}

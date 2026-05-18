@@ -86,12 +86,20 @@ func NewSleepProxy(config Config) (*SleepProxy, error) {
 			
 			// Apply startup behavior
 			if config.StartupBehavior == "off" {
-				log.Printf("Startup behavior is 'off' - stopping containers immediately")
+				if config.PauseContainers {
+					log.Printf("Startup behavior is 'off' - pausing containers immediately")
+				} else {
+					log.Printf("Startup behavior is 'off' - stopping containers immediately")
+				}
 				if err := sp.stopContainers(ctx); err != nil {
-					log.Printf("Warning: Failed to stop containers on startup: %v", err)
+					log.Printf("Warning: Failed to put containers to sleep on startup: %v", err)
 				} else {
 					sp.containersUp = false
-					log.Printf("Containers stopped successfully")
+					if config.PauseContainers {
+						log.Printf("Containers paused successfully")
+					} else {
+						log.Printf("Containers stopped successfully")
+					}
 				}
 			} else {
 				log.Printf("Startup behavior is 'timeout' - containers will sleep after %v of inactivity", config.SleepTimeout)

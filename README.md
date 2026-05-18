@@ -22,19 +22,19 @@ docker pull ghcr.io/bvidotto/docker-sleep-proxy:latest
 ## Features
 
 - 🔄 **Auto-start on traffic** - Containers start automatically when accessed
-- 💤 **Auto-sleep on inactivity** - Containers stop after configurable idle time
+- 💤 **Auto-sleep on inactivity** - Containers stop (or pause) after configurable idle time
 - 📊 **Loading page** - Shows a beautiful loading screen while containers wake up
 - 🏥 **Health checks** - Waits for containers to be fully ready before proxying
 - 🎯 **Minimal footprint** - Only ~2.7 MiB of memory usage
-- 🛑 **Manual shutdown** - REST endpoint to stop containers on demand
+- 🛑 **Manual shutdown** - REST endpoint to stop/pause containers on demand
 - 🔧 **Configurable** - All settings via environment variables
 
 ## How It Works
 
 1. When traffic arrives, the proxy checks if target containers are running
-2. If stopped, it starts them and shows a loading page
+2. If stopped or paused, it wakes them and shows a loading page
 3. Once containers pass health checks, traffic is proxied through
-4. After configured inactivity period, containers are automatically stopped
+4. After configured inactivity period, containers are automatically stopped (or paused)
 5. The proxy itself stays running, using minimal resources
 
 ## Quick Start
@@ -88,9 +88,10 @@ All configuration is done via environment variables:
 | `TARGET_PORT` | ✅ Yes | - | Port of the target service |
 | `PROXY_PORT` | No | `8000` | Port the proxy listens on |
 | `SLEEP_TIMEOUT` | No | `86400` | Seconds of inactivity before stopping containers (24h default) |
+| `PAUSE_CONTAINERS` | No | `false` | When `true`, containers are paused instead of stopped when put to sleep |
 | `CHECK_INTERVAL` | No | `5` | Seconds between health checks during startup |
 | `ENDPOINT_PREFIX` | No | `sleep-proxy` | Prefix for proxy management endpoints |
-| `STARTUP_BEHAVIOR` | No | `timeout` | Controls container behavior on startup: `timeout` = containers stay running until timeout expires; `off` = containers are stopped immediately |
+| `STARTUP_BEHAVIOR` | No | `timeout` | Controls container behavior on startup: `timeout` = containers stay running until timeout expires; `off` = containers are put to sleep immediately |
 | `ALLOW_LIST_MODE` | No | `false` | When `true`, only containers with `sleep-proxy.enable=true` are managed (allowlist). When `false`, all containers are managed except those with `sleep-proxy.enable=false` (denylist) |
 | `DOCKER_HOST` | No | - | Docker host URL (e.g., `tcp://remote-docker:2375` for remote Docker or through proxy) |
 
@@ -114,7 +115,7 @@ curl http://localhost:8000/sleep-proxy/shutdown
 
 Or simply visit in browser: `http://localhost:8000/sleep-proxy/shutdown`
 
-Returns: `{"status":"success","message":"Containers stopped"}`
+Returns: `{"status":"success","message":"Containers stopped"}` (or `"Containers paused"` when `PAUSE_CONTAINERS=true`)
 
 ## Container Lifecycle Management
 
@@ -433,4 +434,3 @@ docker compose ps
 - **Development**: Auto-sleep unused dev environments
 - **Cost Savings**: Reduce cloud resource usage for low-traffic apps
 - **Energy Efficiency**: Minimize power consumption for rarely-used services
-

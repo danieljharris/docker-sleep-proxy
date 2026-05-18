@@ -14,6 +14,7 @@ type Config struct {
 	CheckInterval    time.Duration
 	EndpointPrefix   string
 	AllowListMode    bool
+	PauseContainers  bool
 	DockerHost       string
 	StartupBehavior  string // "timeout" (default) or "off"
 }
@@ -70,6 +71,7 @@ func LoadConfig() Config {
 		CheckInterval:    time.Duration(checkIntervalSec) * time.Second,
 		EndpointPrefix:   getEnv("ENDPOINT_PREFIX", "sleep-proxy"),
 		AllowListMode:    getEnvBool("ALLOW_LIST_MODE", false),
+		PauseContainers:  getEnvBool("PAUSE_CONTAINERS", false),
 		DockerHost:       getEnv("DOCKER_HOST", ""),
 		StartupBehavior:  startupBehavior,
 	}
