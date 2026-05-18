@@ -119,7 +119,7 @@ func (sp *SleepProxy) handleShutdown(w http.ResponseWriter, r *http.Request) {
 func (sp *SleepProxy) setupRoutes() {
 	// API endpoints with prefix
 	prefix := "/" + sp.config.EndpointPrefix
-	
+
 	// Serve static files with prefix
 	http.Handle(prefix+"/static/", http.StripPrefix(prefix, http.FileServer(http.FS(staticFiles))))
 	http.HandleFunc(prefix+"/health", sp.handleHealth)

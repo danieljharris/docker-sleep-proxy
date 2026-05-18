@@ -30,9 +30,9 @@ func (sp *SleepProxy) getProjectContainers(ctx context.Context) ([]types.Contain
 		if c.ID == sp.containerID || (len(sp.containerID) >= 12 && c.ID[:12] == sp.containerID[:12]) {
 			continue
 		}
-		
+
 		labelValue := c.Labels["sleep-proxy.enable"]
-		
+
 		if sp.config.AllowListMode {
 			// Allowlist mode: only include containers explicitly set to "true"
 			if labelValue == "true" {
