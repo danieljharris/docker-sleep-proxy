@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"time"
@@ -30,9 +31,9 @@ func (sp *SleepProxy) getProjectContainers(ctx context.Context) ([]types.Contain
 		if c.ID == sp.containerID || (len(sp.containerID) >= 12 && c.ID[:12] == sp.containerID[:12]) {
 			continue
 		}
-		
+
 		labelValue := c.Labels["sleep-proxy.enable"]
-		
+
 		if sp.config.AllowListMode {
 			// Allowlist mode: only include containers explicitly set to "true"
 			if labelValue == "true" {
@@ -94,6 +95,55 @@ func (sp *SleepProxy) startContainers(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+func (sp *SleepProxy) getContainerCPUPercent(ctx context.Context, containerID string) (float64, error) {
+	statsResp, err := sp.dockerClient.ContainerStats(ctx, containerID, false)
+	if err != nil {
+		return 0, err
+	}
+	defer statsResp.Body.Close()
+
+	var stats types.StatsJSON
+	if err := json.NewDecoder(statsResp.Body).Decode(&stats); err != nil {
+		return 0, err
+	}
+
+	cpuDelta := float64(stats.CPUStats.CPUUsage.TotalUsage - stats.PreCPUStats.CPUUsage.TotalUsage)
+	systemDelta := float64(stats.CPUStats.SystemUsage - stats.PreCPUStats.SystemUsage)
+	if cpuDelta <= 0 || systemDelta <= 0 {
+		return 0, nil
+	}
+
+	onlineCPUs := float64(stats.CPUStats.OnlineCPUs)
+	if onlineCPUs == 0 {
+		onlineCPUs = float64(len(stats.CPUStats.CPUUsage.PercpuUsage))
+	}
+	if onlineCPUs == 0 {
+		onlineCPUs = 1
+	}
+
+	return (cpuDelta / systemDelta) * onlineCPUs * 100.0, nil
+}
+
+func (sp *SleepProxy) hasCPUActivityAboveThreshold(ctx context.Context, containers []types.Container) (bool, error) {
+	for _, c := range containers {
+		if c.State != "running" {
+			continue
+		}
+
+		cpuPercent, err := sp.getContainerCPUPercent(ctx, c.ID)
+		if err != nil {
+			return false, fmt.Errorf("failed to get stats for %s: %w", c.Names[0], err)
+		}
+
+		if cpuPercent > sp.config.CPUUsageThreshold {
+			log.Printf("Container %s CPU usage %.2f%% exceeds threshold %.2f%%", c.Names[0], cpuPercent, sp.config.CPUUsageThreshold)
+			return true, nil
+		}
+	}
+
+	return false, nil
 }
 
 func (sp *SleepProxy) stopContainers(ctx context.Context) error {
@@ -177,6 +227,17 @@ func (sp *SleepProxy) monitorActivity(ctx context.Context) {
 			if sp.areContainersUp() {
 				timeSinceActivity := time.Since(sp.getLastActivity())
 				if timeSinceActivity > sp.config.SleepTimeout {
+					if sp.config.CPUUsageThreshold > 0 {
+						hasUsage, err := sp.hasCPUActivityAboveThreshold(ctx, containers)
+						if err != nil {
+							log.Printf("Failed to evaluate container CPU usage, skipping sleep cycle: %v", err)
+							continue
+						}
+						if hasUsage {
+							continue
+						}
+					}
+
 					log.Printf("No activity for %v (threshold: %v), putting containers to sleep",
 						timeSinceActivity.Round(time.Second), sp.config.SleepTimeout)
 					if err := sp.stopContainers(ctx); err != nil {
