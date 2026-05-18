@@ -86,7 +86,7 @@ func NewSleepProxy(config Config) (*SleepProxy, error) {
 		sp.containersUp = allRunning
 		if allRunning {
 			log.Printf("Target containers are already running")
-
+			
 			// Apply startup behavior
 			if config.StartupBehavior == "off" {
 				if config.PauseContainers {
