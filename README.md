@@ -84,7 +84,7 @@ All configuration is done via environment variables:
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `TARGET_SERVICE` | ✅ Yes | - | Name of the Docker service to proxy to |
+| `TARGET_SERVICE` | ✅ Yes | - | Docker Compose service name(s) to manage; supports comma-separated values (first entry is used as proxy target) |
 | `TARGET_PORT` | ✅ Yes | - | Port of the target service |
 | `PROXY_PORT` | No | `8000` | Port the proxy listens on |
 | `SLEEP_TIMEOUT` | No | `86400` | Seconds of inactivity before stopping containers (24h default) |
@@ -95,6 +95,8 @@ All configuration is done via environment variables:
 | `STARTUP_BEHAVIOR` | No | `timeout` | Controls container behavior on startup: `timeout` = containers stay running until timeout expires; `off` = containers are put to sleep immediately |
 | `ALLOW_LIST_MODE` | No | `false` | When `true`, only containers with `sleep-proxy.enable=true` are managed (allowlist). When `false`, all containers are managed except those with `sleep-proxy.enable=false` (denylist) |
 | `DOCKER_HOST` | No | - | Docker host URL (e.g., `tcp://remote-docker:2375` for remote Docker or through proxy) |
+
+When multiple services are set in `TARGET_SERVICE` (for example `TARGET_SERVICE=web,worker`), they are treated as one sleep/wake group: all services are put to sleep together when idle, and activity in any one of them wakes the full group.
 
 ## Management Endpoints
 
@@ -435,4 +437,3 @@ docker compose ps
 - **Development**: Auto-sleep unused dev environments
 - **Cost Savings**: Reduce cloud resource usage for low-traffic apps
 - **Energy Efficiency**: Minimize power consumption for rarely-used services
-

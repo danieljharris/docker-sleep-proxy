@@ -20,6 +20,7 @@ type SleepProxy struct {
 	lastActivity time.Time
 	mu           sync.RWMutex
 	containersUp bool
+	networkBytes map[string]uint64
 }
 
 func NewSleepProxy(config Config) (*SleepProxy, error) {
@@ -54,7 +55,7 @@ func NewSleepProxy(config Config) (*SleepProxy, error) {
 
 	log.Printf("Sleep Proxy initialized for project: %s", projectName)
 	log.Printf("Container ID: %s", hostname[:12])
-	log.Printf("Target: %s:%s", config.TargetService, config.TargetPort)
+	log.Printf("Targets: %v:%s", config.TargetServices, config.TargetPort)
 	log.Printf("Sleep timeout: %v", config.SleepTimeout)
 	if config.CPUUsageThreshold > 0 {
 		log.Printf("CPU usage threshold for sleep checks: %.2f%%", config.CPUUsageThreshold)
@@ -67,6 +68,7 @@ func NewSleepProxy(config Config) (*SleepProxy, error) {
 		containerID:  hostname,
 		lastActivity: time.Now(),
 		containersUp: true,
+		networkBytes: make(map[string]uint64),
 	}
 
 	// Check if target containers are actually running
@@ -86,7 +88,7 @@ func NewSleepProxy(config Config) (*SleepProxy, error) {
 		sp.containersUp = allRunning
 		if allRunning {
 			log.Printf("Target containers are already running")
-			
+
 			// Apply startup behavior
 			if config.StartupBehavior == "off" {
 				if config.PauseContainers {

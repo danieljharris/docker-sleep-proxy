@@ -31,9 +31,14 @@ func (sp *SleepProxy) getProjectContainers(ctx context.Context) ([]types.Contain
 		if c.ID == sp.containerID || (len(sp.containerID) >= 12 && c.ID[:12] == sp.containerID[:12]) {
 			continue
 		}
-		
+
+		serviceName := c.Labels["com.docker.compose.service"]
+		if serviceName == "" || !contains(sp.config.TargetServices, serviceName) {
+			continue
+		}
+
 		labelValue := c.Labels["sleep-proxy.enable"]
-		
+
 		if sp.config.AllowListMode {
 			// Allowlist mode: only include containers explicitly set to "true"
 			if labelValue == "true" {
@@ -124,6 +129,57 @@ func (sp *SleepProxy) getContainerCPUPercent(ctx context.Context, containerID st
 	}
 
 	return (cpuDelta / systemDelta) * onlineCPUs * 100.0, nil
+}
+
+func (sp *SleepProxy) getContainerNetworkBytes(ctx context.Context, containerID string) (uint64, error) {
+	statsResp, err := sp.dockerClient.ContainerStats(ctx, containerID, false)
+	if err != nil {
+		return 0, err
+	}
+	defer statsResp.Body.Close()
+
+	var stats types.StatsJSON
+	if err := json.NewDecoder(statsResp.Body).Decode(&stats); err != nil {
+		return 0, err
+	}
+
+	var total uint64
+	for _, network := range stats.Networks {
+		total += network.RxBytes + network.TxBytes
+	}
+
+	return total, nil
+}
+
+func (sp *SleepProxy) hasNetworkActivity(ctx context.Context, containers []types.Container) (bool, error) {
+	activeIDs := make(map[string]struct{}, len(containers))
+
+	for _, c := range containers {
+		activeIDs[c.ID] = struct{}{}
+		if c.State != "running" {
+			continue
+		}
+
+		totalBytes, err := sp.getContainerNetworkBytes(ctx, c.ID)
+		if err != nil {
+			return false, fmt.Errorf("failed to get network stats for %s: %w", c.Names[0], err)
+		}
+
+		previousBytes, hasPrevious := sp.networkBytes[c.ID]
+		sp.networkBytes[c.ID] = totalBytes
+		if hasPrevious && totalBytes > previousBytes {
+			log.Printf("Container %s network activity detected (%d -> %d bytes)", c.Names[0], previousBytes, totalBytes)
+			return true, nil
+		}
+	}
+
+	for containerID := range sp.networkBytes {
+		if _, exists := activeIDs[containerID]; !exists {
+			delete(sp.networkBytes, containerID)
+		}
+	}
+
+	return false, nil
 }
 
 func (sp *SleepProxy) hasCPUActivityAboveThreshold(ctx context.Context, containers []types.Container) (bool, error) {
@@ -221,6 +277,24 @@ func (sp *SleepProxy) monitorActivity(ctx context.Context) {
 			} else if !allRunning && sp.areContainersUp() {
 				log.Printf("Detected containers are no longer running")
 				sp.setContainersUp(false)
+			}
+
+			hasNetworkActivity, err := sp.hasNetworkActivity(ctx, containers)
+			if err != nil {
+				log.Printf("Failed to evaluate container network activity: %v", err)
+				continue
+			}
+			if hasNetworkActivity {
+				sp.updateActivity()
+				if !allRunning {
+					log.Printf("Network activity detected in target group, starting all target containers")
+					if err := sp.startContainers(ctx); err != nil {
+						log.Printf("Failed to wake target containers: %v", err)
+					} else {
+						sp.setContainersUp(true)
+					}
+				}
+				continue
 			}
 
 			// Check for timeout only if containers are running
