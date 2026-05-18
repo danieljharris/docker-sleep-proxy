@@ -30,9 +30,9 @@ func (sp *SleepProxy) getProjectContainers(ctx context.Context) ([]types.Contain
 		if c.ID == sp.containerID || (len(sp.containerID) >= 12 && c.ID[:12] == sp.containerID[:12]) {
 			continue
 		}
-
+		
 		labelValue := c.Labels["sleep-proxy.enable"]
-
+		
 		if sp.config.AllowListMode {
 			// Allowlist mode: only include containers explicitly set to "true"
 			if labelValue == "true" {
@@ -75,7 +75,6 @@ func (sp *SleepProxy) startContainers(ctx context.Context) error {
 			if len(containerName) > 0 && containerName[0] == '/' {
 				containerName = containerName[1:]
 			}
-
 			if c.State == "paused" {
 				log.Printf("Unpausing container: %s", containerName)
 				if err := sp.dockerClient.ContainerUnpause(ctx, c.ID); err != nil {
@@ -85,7 +84,6 @@ func (sp *SleepProxy) startContainers(ctx context.Context) error {
 				}
 				continue
 			}
-
 			log.Printf("Starting container: %s (state: %s)", containerName, c.State)
 			if err := sp.dockerClient.ContainerStart(ctx, c.ID, container.StartOptions{}); err != nil {
 				log.Printf("Failed to start container %s: %v", containerName, err)

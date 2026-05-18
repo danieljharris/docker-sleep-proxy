@@ -434,3 +434,4 @@ docker compose ps
 - **Development**: Auto-sleep unused dev environments
 - **Cost Savings**: Reduce cloud resource usage for low-traffic apps
 - **Energy Efficiency**: Minimize power consumption for rarely-used services
+
