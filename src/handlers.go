@@ -97,18 +97,23 @@ func (sp *SleepProxy) handleShutdown(w http.ResponseWriter, r *http.Request) {
 
 	ctx := context.Background()
 	if err := sp.stopContainers(ctx); err != nil {
-		log.Printf("Failed to stop containers: %v", err)
+		log.Printf("Failed to put containers to sleep: %v", err)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte(fmt.Sprintf(`{"error":"Failed to stop containers: %v"}`, err)))
+		w.Write([]byte(fmt.Sprintf(`{"error":"Failed to put containers to sleep: %v"}`, err)))
 		return
 	}
 
 	sp.setContainersUp(false)
 
+	successMessage := "Containers stopped"
+	if sp.config.PauseContainers {
+		successMessage = "Containers paused"
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(`{"status":"success","message":"Containers stopped"}`))
+	w.Write([]byte(fmt.Sprintf(`{"status":"success","message":"%s"}`, successMessage)))
 }
 
 func (sp *SleepProxy) setupRoutes() {
