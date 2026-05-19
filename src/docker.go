@@ -182,7 +182,7 @@ func (sp *SleepProxy) hasNetworkActivity(ctx context.Context, containers []types
 	return false, nil
 }
 
-func (sp *SleepProxy) hasCPUActivityAboveThreshold(ctx context.Context, containers []types.Container) (bool, error) {
+func (sp *SleepProxy) allRunningContainersBelowCPUThreshold(ctx context.Context, containers []types.Container) (bool, error) {
 	for _, c := range containers {
 		if c.State != "running" {
 			continue
@@ -195,11 +195,11 @@ func (sp *SleepProxy) hasCPUActivityAboveThreshold(ctx context.Context, containe
 
 		if cpuPercent > sp.config.CPUUsageThreshold {
 			log.Printf("Container %s CPU usage %.2f%% exceeds threshold %.2f%%", c.Names[0], cpuPercent, sp.config.CPUUsageThreshold)
-			return true, nil
+			return false, nil
 		}
 	}
 
-	return false, nil
+	return true, nil
 }
 
 func (sp *SleepProxy) stopContainers(ctx context.Context) error {
@@ -297,22 +297,30 @@ func (sp *SleepProxy) monitorActivity(ctx context.Context) {
 				continue
 			}
 
-			// Check for timeout only if containers are running
-			if sp.areContainersUp() {
+			hasRunning := false
+			for _, c := range containers {
+				if c.State == "running" {
+					hasRunning = true
+					break
+				}
+			}
+
+			// Check for timeout only if at least one target container is running
+			if hasRunning {
 				timeSinceActivity := time.Since(sp.getLastActivity())
 				if timeSinceActivity > sp.config.SleepTimeout {
 					if sp.config.CPUUsageThreshold > 0 {
-						hasUsage, err := sp.hasCPUActivityAboveThreshold(ctx, containers)
+						allBelowThreshold, err := sp.allRunningContainersBelowCPUThreshold(ctx, containers)
 						if err != nil {
 							log.Printf("Failed to evaluate container CPU usage, skipping sleep cycle: %v", err)
 							continue
 						}
-						if hasUsage {
+						if !allBelowThreshold {
 							continue
 						}
 					}
 
-					log.Printf("No activity for %v (threshold: %v), putting containers to sleep",
+					log.Printf("No activity for %v (threshold: %v) and all running target containers are below CPU threshold, putting containers to sleep",
 						timeSinceActivity.Round(time.Second), sp.config.SleepTimeout)
 					if err := sp.stopContainers(ctx); err != nil {
 						log.Printf("Failed to put containers to sleep: %v", err)

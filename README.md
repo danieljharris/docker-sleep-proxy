@@ -96,7 +96,7 @@ All configuration is done via environment variables:
 | `ALLOW_LIST_MODE` | No | `false` | When `true`, only containers with `sleep-proxy.enable=true` are managed (allowlist). When `false`, all containers are managed except those with `sleep-proxy.enable=false` (denylist) |
 | `DOCKER_HOST` | No | - | Docker host URL (e.g., `tcp://remote-docker:2375` for remote Docker or through proxy) |
 
-When multiple services are set in `TARGET_SERVICE` (for example `TARGET_SERVICE=web,worker`), they are treated as one sleep/wake group: all services are put to sleep together when idle, and activity in any one of them wakes the full group.
+When multiple services are set in `TARGET_SERVICE` (for example `TARGET_SERVICE=web,worker`), they are treated as one sleep/wake group: all running services must stay below the CPU threshold before the group is put to sleep, and activity in any one of them wakes the full group.
 
 ## Management Endpoints
 
