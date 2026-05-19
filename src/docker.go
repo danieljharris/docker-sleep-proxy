@@ -31,9 +31,14 @@ func (sp *SleepProxy) getProjectContainers(ctx context.Context) ([]types.Contain
 		if c.ID == sp.containerID || (len(sp.containerID) >= 12 && c.ID[:12] == sp.containerID[:12]) {
 			continue
 		}
-		
+
+		serviceName := c.Labels["com.docker.compose.service"]
+		if serviceName == "" || !contains(sp.config.TargetServices, serviceName) {
+			continue
+		}
+
 		labelValue := c.Labels["sleep-proxy.enable"]
-		
+
 		if sp.config.AllowListMode {
 			// Allowlist mode: only include containers explicitly set to "true"
 			if labelValue == "true" {
@@ -126,7 +131,58 @@ func (sp *SleepProxy) getContainerCPUPercent(ctx context.Context, containerID st
 	return (cpuDelta / systemDelta) * onlineCPUs * 100.0, nil
 }
 
-func (sp *SleepProxy) hasCPUActivityAboveThreshold(ctx context.Context, containers []types.Container) (bool, error) {
+func (sp *SleepProxy) getContainerNetworkBytes(ctx context.Context, containerID string) (uint64, error) {
+	statsResp, err := sp.dockerClient.ContainerStats(ctx, containerID, false)
+	if err != nil {
+		return 0, err
+	}
+	defer statsResp.Body.Close()
+
+	var stats types.StatsJSON
+	if err := json.NewDecoder(statsResp.Body).Decode(&stats); err != nil {
+		return 0, err
+	}
+
+	var total uint64
+	for _, network := range stats.Networks {
+		total += network.RxBytes + network.TxBytes
+	}
+
+	return total, nil
+}
+
+func (sp *SleepProxy) hasNetworkActivity(ctx context.Context, containers []types.Container) (bool, error) {
+	managedIDs := make(map[string]struct{}, len(containers))
+
+	for _, c := range containers {
+		managedIDs[c.ID] = struct{}{}
+		if c.State != "running" {
+			continue
+		}
+
+		totalBytes, err := sp.getContainerNetworkBytes(ctx, c.ID)
+		if err != nil {
+			return false, fmt.Errorf("failed to get network stats for %s: %w", c.Names[0], err)
+		}
+
+		previousBytes, hasPrevious := sp.networkBytes[c.ID]
+		sp.networkBytes[c.ID] = totalBytes
+		if hasPrevious && totalBytes > previousBytes {
+			log.Printf("Container %s network activity detected (%d -> %d bytes)", c.Names[0], previousBytes, totalBytes)
+			return true, nil
+		}
+	}
+
+	for containerID := range sp.networkBytes {
+		if _, exists := managedIDs[containerID]; !exists {
+			delete(sp.networkBytes, containerID)
+		}
+	}
+
+	return false, nil
+}
+
+func (sp *SleepProxy) allRunningContainersBelowCPUThreshold(ctx context.Context, containers []types.Container) (bool, error) {
 	for _, c := range containers {
 		if c.State != "running" {
 			continue
@@ -139,11 +195,11 @@ func (sp *SleepProxy) hasCPUActivityAboveThreshold(ctx context.Context, containe
 
 		if cpuPercent > sp.config.CPUUsageThreshold {
 			log.Printf("Container %s CPU usage %.2f%% exceeds threshold %.2f%%", c.Names[0], cpuPercent, sp.config.CPUUsageThreshold)
-			return true, nil
+			return false, nil
 		}
 	}
 
-	return false, nil
+	return true, nil
 }
 
 func (sp *SleepProxy) stopContainers(ctx context.Context) error {
@@ -223,22 +279,48 @@ func (sp *SleepProxy) monitorActivity(ctx context.Context) {
 				sp.setContainersUp(false)
 			}
 
-			// Check for timeout only if containers are running
-			if sp.areContainersUp() {
+			hasNetworkActivity, err := sp.hasNetworkActivity(ctx, containers)
+			if err != nil {
+				log.Printf("Failed to evaluate container network activity: %v", err)
+				continue
+			}
+			if hasNetworkActivity {
+				sp.updateActivity()
+				if !allRunning {
+					log.Printf("Network activity detected in target group, starting all target containers")
+					if err := sp.startContainers(ctx); err != nil {
+						log.Printf("Failed to wake target containers: %v", err)
+					} else {
+						sp.setContainersUp(true)
+					}
+				}
+				continue
+			}
+
+			hasRunning := false
+			for _, c := range containers {
+				if c.State == "running" {
+					hasRunning = true
+					break
+				}
+			}
+
+			// Check for timeout only if at least one target container is running
+			if hasRunning {
 				timeSinceActivity := time.Since(sp.getLastActivity())
 				if timeSinceActivity > sp.config.SleepTimeout {
 					if sp.config.CPUUsageThreshold > 0 {
-						hasUsage, err := sp.hasCPUActivityAboveThreshold(ctx, containers)
+						allBelowThreshold, err := sp.allRunningContainersBelowCPUThreshold(ctx, containers)
 						if err != nil {
 							log.Printf("Failed to evaluate container CPU usage, skipping sleep cycle: %v", err)
 							continue
 						}
-						if hasUsage {
+						if !allBelowThreshold {
 							continue
 						}
 					}
 
-					log.Printf("No activity for %v (threshold: %v), putting containers to sleep",
+					log.Printf("No activity for %v (threshold: %v) and all running target containers are below CPU threshold, putting containers to sleep",
 						timeSinceActivity.Round(time.Second), sp.config.SleepTimeout)
 					if err := sp.stopContainers(ctx); err != nil {
 						log.Printf("Failed to put containers to sleep: %v", err)
